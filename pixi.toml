@@ -1,0 +1,24 @@
+[workspace]
+name = "motion_learning"
+version = "0.1.0"
+description = "Generate articulated scenes, render images, and compute motion deltas"
+authors = ["mdicicco"]
+channels = ["conda-forge"]
+platforms = ["osx-arm64", "osx-64", "linux-64"]
+
+[tasks]
+generate = "python src/main.py"
+render-only = "python src/renderer.py"
+
+[dependencies]
+python = ">=3.11"
+numpy = ">=1.26"
+opencv = ">=4.9"
+pillow = ">=10.0"
+mujoco = ">=3.1"
+
+[feature.dev.dependencies]
+pytest = ">=8.0"
+
+[environments]
+default = ["dev"]
