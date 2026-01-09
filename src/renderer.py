@@ -352,6 +352,38 @@ def render_and_perturb_to_arrays(
         renderer.close()
 
 
+def render_skeleton(xml_content: str, config: RenderConfig | None = None) -> np.ndarray:
+    """
+    Render a skeleton scene from XML content string.
+    
+    This renders a grey skeleton version of the scene structure,
+    useful for visualizing what the compact encoding represents.
+    """
+    config = config or RenderConfig()
+    
+    # Load model from XML string
+    model = mujoco.MjModel.from_xml_string(xml_content)
+    data = mujoco.MjData(model)
+    
+    # Setup renderer
+    renderer = mujoco.Renderer(model, height=config.height, width=config.width)
+    
+    # Setup camera
+    camera = mujoco.MjvCamera()
+    camera.distance = config.camera_distance
+    camera.azimuth = config.camera_azimuth
+    camera.elevation = config.camera_elevation
+    camera.lookat[:] = config.camera_lookat
+    
+    try:
+        # Forward simulation and render
+        mujoco.mj_forward(model, data)
+        renderer.update_scene(data, camera)
+        return renderer.render()
+    finally:
+        renderer.close()
+
+
 def render_and_perturb(
     xml_path: Path | str,
     output_dir: Path | str,

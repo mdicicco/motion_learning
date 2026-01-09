@@ -19,9 +19,9 @@ from scene_generator import (
     generate_random_scene, 
     scene_to_mjcf, 
     save_scene_encoding,
-    EnvironmentConfig,
+    scene_to_skeleton_mjcf,
 )
-from renderer import render_and_perturb_to_arrays, save_image
+from renderer import render_and_perturb_to_arrays, render_skeleton, save_image
 
 
 def generate_run_id() -> str:
@@ -86,9 +86,9 @@ def run_generation_pipeline(
         with open(xml_path, "w") as f:
             f.write(xml_content)
         
-        # Save compact scene encoding
+        # Save compact scene encoding (structure only, no color/texture)
         encoding_path = scene_dir / f"{scene_id}_scene.txt"
-        save_scene_encoding(objects, encoding_path, environment)
+        save_scene_encoding(objects, encoding_path)
         
         body_counts = [len(obj.bodies) for obj in objects]
         print(f"  Objects: {num_objects}, Bodies per object: {body_counts}")
@@ -104,6 +104,12 @@ def run_generation_pipeline(
             save_image(original_img, scene_dir / f"{scene_id}_original.png")
             save_image(perturbed_img, scene_dir / f"{scene_id}_perturbed.png")
             save_image(motion_img, scene_dir / f"{scene_id}_motion_delta.png")
+            
+            # Generate and save skeleton image from the compact encoding
+            # This demonstrates that the code can regenerate the scene structure
+            skeleton_xml = scene_to_skeleton_mjcf(objects, scene_name=f"skeleton_{scene_id}")
+            skeleton_img = render_skeleton(skeleton_xml)
+            save_image(skeleton_img, scene_dir / f"{scene_id}_skeleton.png")
             
             scene_metadata = {
                 "scene_id": scene_id,
@@ -131,6 +137,7 @@ def run_generation_pipeline(
                     "original": f"{scene_id}_original.png",
                     "perturbed": f"{scene_id}_perturbed.png",
                     "motion_delta": f"{scene_id}_motion_delta.png",
+                    "skeleton": f"{scene_id}_skeleton.png",
                 },
             }
             

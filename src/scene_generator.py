@@ -498,16 +498,16 @@ def hex_to_color(hex_str: str) -> tuple[float, float, float, float]:
 
 
 def encode_body(body: BodyConfig) -> str:
-    """Encode a single body to compact string format."""
+    """Encode a single body to compact string format (structure only, no color).
+    
+    Format: shape:sizes@pos^joint
+    """
     # Shape and sizes
     shape_char = SHAPE_TO_CHAR[body.shape]
     sizes_str = ",".join(f"{s:.3f}" for s in body.size)
     
     # Position
     pos_str = ",".join(f"{p:.3f}" for p in body.pos)
-    
-    # Color
-    color_hex = color_to_hex(body.color)
     
     # Joint
     joint_char = JOINT_TO_CHAR[body.joint_type]
@@ -524,15 +524,14 @@ def encode_body(body: BodyConfig) -> str:
     else:  # None
         joint_str = joint_char
     
-    return f"{shape_char}:{sizes_str}@{pos_str}#{color_hex}^{joint_str}"
+    return f"{shape_char}:{sizes_str}@{pos_str}^{joint_str}"
 
 
 def decode_body(encoded: str, body_name: str) -> BodyConfig:
-    """Decode a compact string to BodyConfig."""
-    # Split: shape:sizes@pos#color^joint
+    """Decode a compact string to BodyConfig (assigns default grey color)."""
+    # Split: shape:sizes@pos^joint
     shape_part, rest = encoded.split("@")
-    pos_part, rest = rest.split("#")
-    color_part, joint_part = rest.split("^")
+    pos_part, joint_part = rest.split("^")
     
     # Shape and sizes
     shape_char, sizes_str = shape_part.split(":")
@@ -542,8 +541,8 @@ def decode_body(encoded: str, body_name: str) -> BodyConfig:
     # Position
     pos = tuple(float(p) for p in pos_part.split(","))
     
-    # Color
-    color = hex_to_color(color_part)
+    # Default grey color for decoded bodies
+    color = (0.5, 0.5, 0.5, 1.0)
     
     # Joint
     joint_parts = joint_part.split(":")
@@ -611,106 +610,232 @@ def decode_object(encoded: str, obj_name: str) -> ObjectConfig:
     )
 
 
-def encode_environment(env: EnvironmentConfig) -> str:
-    """Encode environment config to compact string.
-    
-    Format: ENV|floor_type:r1,g1,b1:r2,g2,b2:size|sky_type:r1,g1,b1:r2,g2,b2:radius
-    """
-    floor_c1 = ",".join(f"{c:.3f}" for c in env.floor_color1)
-    floor_c2 = ",".join(f"{c:.3f}" for c in env.floor_color2)
-    sky_c1 = ",".join(f"{c:.3f}" for c in env.sky_color1)
-    sky_c2 = ",".join(f"{c:.3f}" for c in env.sky_color2)
-    
-    floor_str = f"{env.floor_type}:{floor_c1}:{floor_c2}:{env.floor_size:.1f}"
-    sky_str = f"{env.sky_type}:{sky_c1}:{sky_c2}:{env.sky_radius:.1f}"
-    
-    return f"ENV|{floor_str}|{sky_str}"
-
-
-def decode_environment(encoded: str) -> EnvironmentConfig:
-    """Decode compact string to EnvironmentConfig."""
-    parts = encoded.split("|")
-    # parts[0] = "ENV", parts[1] = floor, parts[2] = sky
-    
-    floor_parts = parts[1].split(":")
-    floor_type = floor_parts[0]
-    floor_color1 = tuple(float(c) for c in floor_parts[1].split(","))
-    floor_color2 = tuple(float(c) for c in floor_parts[2].split(","))
-    floor_size = float(floor_parts[3])
-    
-    sky_parts = parts[2].split(":")
-    sky_type = sky_parts[0]
-    sky_color1 = tuple(float(c) for c in sky_parts[1].split(","))
-    sky_color2 = tuple(float(c) for c in sky_parts[2].split(","))
-    sky_radius = float(sky_parts[3])
-    
+def skeleton_environment() -> EnvironmentConfig:
+    """Create a neutral grey skeleton environment for visualization."""
     return EnvironmentConfig(
-        floor_type=floor_type,
-        floor_color1=floor_color1,
-        floor_color2=floor_color2,
-        floor_size=floor_size,
-        sky_type=sky_type,
-        sky_color1=sky_color1,
-        sky_color2=sky_color2,
-        sky_radius=sky_radius,
+        floor_type="flat",
+        floor_color1=(0.3, 0.3, 0.3),
+        floor_color2=(0.3, 0.3, 0.3),
+        sky_type="flat",
+        sky_color1=(0.15, 0.15, 0.15),
+        sky_color2=(0.15, 0.15, 0.15),
     )
 
 
-def encode_scene(objects: list[ObjectConfig], environment: EnvironmentConfig | None = None) -> str:
-    """Encode entire scene to compact multi-line string.
+def encode_scene(objects: list[ObjectConfig]) -> str:
+    """Encode scene structure to compact multi-line string (no color/texture).
     
-    First line is environment config (if provided), followed by one line per object.
+    One line per object, containing only structural information:
+    shape, size, position, joint type, axis, range.
     """
-    lines = []
-    
-    if environment is not None:
-        lines.append(encode_environment(environment))
-    
-    for obj in objects:
-        lines.append(encode_object(obj))
-    
+    lines = [encode_object(obj) for obj in objects]
     return "\n".join(lines)
 
 
-def decode_scene(encoded: str) -> tuple[list[ObjectConfig], EnvironmentConfig | None]:
-    """Decode compact string back to list of ObjectConfig and optional EnvironmentConfig."""
+def decode_scene(encoded: str) -> list[ObjectConfig]:
+    """Decode compact string back to list of ObjectConfig with grey colors."""
     lines = [line.strip() for line in encoded.strip().split("\n") if line.strip()]
     
-    environment = None
-    object_lines = []
-    
-    for line in lines:
-        if line.startswith("ENV|"):
-            environment = decode_environment(line)
-        else:
-            object_lines.append(line)
-    
     objects = []
-    for i, line in enumerate(object_lines):
+    for i, line in enumerate(lines):
         obj_name = f"object_{i}"
         objects.append(decode_object(line, obj_name))
     
-    return objects, environment
+    return objects
 
 
-def save_scene_encoding(
-    objects: list[ObjectConfig], 
-    output_path: Path | str,
-    environment: EnvironmentConfig | None = None,
-) -> None:
-    """Save compact scene encoding to a text file."""
+def save_scene_encoding(objects: list[ObjectConfig], output_path: Path | str) -> None:
+    """Save compact scene encoding to a text file (structure only)."""
     output_path = Path(output_path)
-    encoded = encode_scene(objects, environment)
+    encoded = encode_scene(objects)
     with open(output_path, "w") as f:
         f.write(encoded)
 
 
-def load_scene_encoding(input_path: Path | str) -> tuple[list[ObjectConfig], EnvironmentConfig | None]:
+def load_scene_encoding(input_path: Path | str) -> list[ObjectConfig]:
     """Load scene from compact encoding file."""
     input_path = Path(input_path)
     with open(input_path, "r") as f:
         encoded = f.read()
     return decode_scene(encoded)
+
+
+def scene_to_skeleton_mjcf(objects: list[ObjectConfig], scene_name: str = "skeleton") -> str:
+    """Generate MJCF XML for a skeleton scene with joint visualizations.
+    
+    Features:
+    - Semi-transparent grey objects (alpha=0.4)
+    - Red joint visualizations:
+      - Hinge: red cylinder aligned with rotation axis
+      - Slide: red box aligned with slide axis
+      - Ball: red sphere
+      - Free: red octahedron (two pyramids)
+    - Neutral grey floor and sky
+    """
+    env = skeleton_environment()
+    
+    # Joint visualization sizes
+    JOINT_VIS_SIZE = 0.025  # Base size for joint markers
+    JOINT_COLOR = "0.9 0.1 0.1 1.0"  # Bright red
+    BODY_ALPHA = 0.4  # Semi-transparent bodies
+    
+    # Root mujoco element
+    mujoco_elem = ET.Element("mujoco", model=scene_name)
+    
+    # Compiler settings
+    ET.SubElement(mujoco_elem, "compiler", angle="radian", autolimits="true")
+    
+    # Visual settings
+    visual = ET.SubElement(mujoco_elem, "visual")
+    ET.SubElement(visual, "global", offwidth="1280", offheight="960")
+    ET.SubElement(visual, "quality", shadowsize="4096")
+    
+    # Options
+    ET.SubElement(mujoco_elem, "option", gravity="0 0 -9.81", timestep="0.002")
+    
+    # Assets
+    asset = ET.SubElement(mujoco_elem, "asset")
+    
+    # Floor material (grey, no reflection)
+    floor_rgb = " ".join(f"{c:.3f}" for c in env.floor_color1)
+    ET.SubElement(asset, "material", name="floor_mat", rgba=f"{floor_rgb} 1.0",
+                  reflectance="0", specular="0")
+    
+    # Sky texture
+    sky_rgb = " ".join(f"{c:.3f}" for c in env.sky_color1)
+    ET.SubElement(asset, "texture", name="sky_tex", type="skybox", builtin="flat",
+                  width="512", height="512", rgb1=sky_rgb, rgb2=sky_rgb)
+    ET.SubElement(asset, "material", name="sky_mat", texture="sky_tex",
+                  emission="1", specular="0", shininess="0")
+    
+    # Semi-transparent grey material for bodies
+    ET.SubElement(asset, "material", name="body_mat", 
+                  rgba=f"0.5 0.5 0.5 {BODY_ALPHA}", specular="0.3", shininess="0.3")
+    
+    # Joint visualization materials
+    ET.SubElement(asset, "material", name="joint_hinge_mat", rgba=JOINT_COLOR,
+                  specular="0.8", shininess="0.8")
+    ET.SubElement(asset, "material", name="joint_slide_mat", rgba="0.1 0.9 0.1 1.0",
+                  specular="0.8", shininess="0.8")  # Green for slide
+    ET.SubElement(asset, "material", name="joint_ball_mat", rgba="0.1 0.1 0.9 1.0",
+                  specular="0.8", shininess="0.8")  # Blue for ball
+    ET.SubElement(asset, "material", name="joint_free_mat", rgba="0.9 0.9 0.1 1.0",
+                  specular="0.8", shininess="0.8")  # Yellow for free
+    
+    # Worldbody
+    worldbody = ET.SubElement(mujoco_elem, "worldbody")
+    
+    # Sky dome
+    ET.SubElement(worldbody, "geom", name="sky_dome", type="sphere",
+                  size=f"{env.sky_radius:.1f}", pos="0 0 0", material="sky_mat",
+                  contype="0", conaffinity="0")
+    
+    # Ground plane
+    ET.SubElement(worldbody, "geom", name="ground", type="plane",
+                  size=f"{env.floor_size:.1f} {env.floor_size:.1f} 0.1", material="floor_mat")
+    
+    # Diffuse ambient lighting (no shadows)
+    ET.SubElement(worldbody, "light", name="ambient1", pos="0 0 5",
+                  dir="0 0 -1", diffuse="0.6 0.6 0.6", specular="0 0 0",
+                  castshadow="false", directional="true")
+    ET.SubElement(worldbody, "light", name="ambient2", pos="0 0 -5",
+                  dir="0 0 1", diffuse="0.4 0.4 0.4", specular="0 0 0",
+                  castshadow="false", directional="true")
+    ET.SubElement(worldbody, "light", name="ambient3", pos="5 0 0",
+                  dir="-1 0 0", diffuse="0.3 0.3 0.3", specular="0 0 0",
+                  castshadow="false", directional="true")
+    ET.SubElement(worldbody, "light", name="ambient4", pos="-5 0 0",
+                  dir="1 0 0", diffuse="0.3 0.3 0.3", specular="0 0 0",
+                  castshadow="false", directional="true")
+    
+    # Add objects with joint visualizations
+    joint_idx = 0
+    for obj in objects:
+        current_parent = worldbody
+        
+        for i, body in enumerate(obj.bodies):
+            body_pos = " ".join(f"{p:.3f}" for p in body.pos)
+            body_elem = ET.SubElement(current_parent, "body",
+                                     name=body.name, pos=body_pos)
+            
+            # Add joint if specified
+            if body.joint_type:
+                joint_attrs = {"name": f"{body.name}_joint", "type": body.joint_type}
+                
+                if body.joint_type in ["hinge", "slide"]:
+                    joint_attrs["axis"] = " ".join(str(a) for a in body.joint_axis)
+                    joint_attrs["range"] = f"{body.joint_range[0]:.3f} {body.joint_range[1]:.3f}"
+                elif body.joint_type == "ball":
+                    joint_attrs["range"] = f"0 {body.joint_range[1]:.3f}"
+                
+                ET.SubElement(body_elem, "joint", **joint_attrs)
+                
+                # Add joint visualization geom (decorative, no collision)
+                jv_name = f"joint_vis_{joint_idx}"
+                jv_attrs = {
+                    "name": jv_name,
+                    "contype": "0",
+                    "conaffinity": "0",
+                    "pos": "0 0 0",
+                }
+                
+                if body.joint_type == "hinge":
+                    # Cylinder aligned with rotation axis
+                    ax = body.joint_axis
+                    # Compute euler angles to align cylinder with axis
+                    # For simplicity, use quat or just set size
+                    jv_attrs["type"] = "cylinder"
+                    jv_attrs["size"] = f"{JOINT_VIS_SIZE} {JOINT_VIS_SIZE * 2}"
+                    jv_attrs["material"] = "joint_hinge_mat"
+                    # Align with axis using fromto instead
+                    axis_len = JOINT_VIS_SIZE * 2.5
+                    fromto = f"{-ax[0]*axis_len} {-ax[1]*axis_len} {-ax[2]*axis_len} {ax[0]*axis_len} {ax[1]*axis_len} {ax[2]*axis_len}"
+                    jv_attrs["fromto"] = fromto
+                    jv_attrs.pop("size")  # fromto defines size
+                    jv_attrs["size"] = f"{JOINT_VIS_SIZE}"
+                    
+                elif body.joint_type == "slide":
+                    # Box aligned with slide axis
+                    ax = body.joint_axis
+                    jv_attrs["type"] = "box"
+                    # Make box elongated along slide axis
+                    sx = JOINT_VIS_SIZE * (3 if abs(ax[0]) > 0.5 else 1)
+                    sy = JOINT_VIS_SIZE * (3 if abs(ax[1]) > 0.5 else 1)
+                    sz = JOINT_VIS_SIZE * (3 if abs(ax[2]) > 0.5 else 1)
+                    jv_attrs["size"] = f"{sx:.3f} {sy:.3f} {sz:.3f}"
+                    jv_attrs["material"] = "joint_slide_mat"
+                    
+                elif body.joint_type == "ball":
+                    # Sphere for ball joint
+                    jv_attrs["type"] = "sphere"
+                    jv_attrs["size"] = f"{JOINT_VIS_SIZE * 1.5}"
+                    jv_attrs["material"] = "joint_ball_mat"
+                    
+                elif body.joint_type == "free":
+                    # Larger sphere for free joint (6 DOF)
+                    jv_attrs["type"] = "sphere"
+                    jv_attrs["size"] = f"{JOINT_VIS_SIZE * 2}"
+                    jv_attrs["material"] = "joint_free_mat"
+                
+                ET.SubElement(body_elem, "geom", **jv_attrs)
+                joint_idx += 1
+            
+            # Add body geometry (semi-transparent)
+            geom_attrs = {
+                "name": f"{body.name}_geom",
+                "type": body.shape,
+                "size": " ".join(f"{s:.3f}" for s in body.size),
+                "material": "body_mat",
+            }
+            ET.SubElement(body_elem, "geom", **geom_attrs)
+            
+            # Next body is child of this one
+            current_parent = body_elem
+    
+    # Pretty print
+    rough_string = ET.tostring(mujoco_elem, encoding="unicode")
+    reparsed = minidom.parseString(rough_string)
+    return reparsed.toprettyxml(indent="  ")
 
 
 if __name__ == "__main__":
